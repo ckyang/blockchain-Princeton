@@ -23,26 +23,52 @@ public class TxHandler {
      *     values; and false otherwise.
      */
     public boolean isValidTx(Transaction tx) {
-        ArrayList<Transaction.Input> input = tx.getInputs();
-        ArrayList<Transaction.Output> output = tx.getOutputs();
-        double inValue = 0.0, outValue = 0.0;
+        ArrayList<Transaction.Input> inputs = tx.getInputs();
+        ArrayList<Transaction.Output> outputs = tx.getOutputs();
+        ArrayList<UTXO> utxos = m_utxoPool.getAllUTXO();
+        ArrayList<Transaction.Output> utxoOutputs = new ArrayList<Transaction.Output>();
 
-        for(int i = 0; i < input.size(); ++i) {
-            // (2) the signatures on each input of {@code tx} are valid
-            if(!Crypto.verifySignature(output.get(input.get(i).outputIndex).address, tx.getRawDataToSign(i), input.get(i).signature)) {
-                return false;
-            }
-
-            inValue += output.get(input.get(i).outputIndex).value;
+        for(int i = 0; i < utxos.size(); ++i) {
+            utxoOutputs.add(m_utxoPool.getTxOutput(utxos.get(i)));
         }
 
-        for(int i = 0; i < output.size(); ++i) {
-            // (4) all of {@code tx}s output values are non-negative
-            if(output.get(i).value < 0.0) {
+        double inValue = 0.0, outValue = 0.0;
+
+        for(int i = 0; i < inputs.size(); ++i) {
+            // (2) the signatures on each input of {@code tx} are valid
+            if(!Crypto.verifySignature(outputs.get(inputs.get(i).outputIndex).address, tx.getRawDataToSign(i), inputs.get(i).signature)) {
                 return false;
             }
 
-            outValue += output.get(i).value;
+            inValue += outputs.get(inputs.get(i).outputIndex).value;
+        }
+
+        boolean bInUTXOPool = false;
+
+        for(int i = 0; i < outputs.size(); ++i) {
+            // (1) all outputs claimed by {@code tx} are in the current UTXO pool
+            for(int j = 0; j < utxoOutputs.size(); ++j) {
+                if(outputs.get(i) == utxoOutputs.get(j)) {
+                    // (3) no UTXO is claimed multiple times by {@code tx}
+                    if(!m_utxoPool.contains(utxos.get(j))) {
+                        return false;
+                    }
+
+                    m_utxoPool.removeUTXO(utxos.get(j));
+                    bInUTXOPool = true;
+                }
+            }
+
+            if(!bInUTXOPool) {
+                return false;
+            }
+
+            // (4) all of {@code tx}s output values are non-negative
+            if(outputs.get(i).value < 0.0) {
+                return false;
+            }
+
+            outValue += outputs.get(i).value;
         }
 
         // (5) the sum of {@code tx}s input values is greater than or equal to the sum of its output
