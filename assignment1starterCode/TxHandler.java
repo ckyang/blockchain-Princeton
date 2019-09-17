@@ -2,7 +2,8 @@ import java.util.*;
 
 public class TxHandler {
 
-    UTXOPool m_utxoPool;
+    private UTXOPool m_utxoPool;
+    private HashSet<UTXO> m_toRemoved;
 
     /**
      * Creates a public ledger whose current UTXOPool (collection of unspent transaction outputs) is
@@ -25,44 +26,34 @@ public class TxHandler {
     public boolean isValidTx(Transaction tx) {
         ArrayList<Transaction.Input> inputs = tx.getInputs();
         ArrayList<Transaction.Output> outputs = tx.getOutputs();
-        ArrayList<UTXO> utxos = m_utxoPool.getAllUTXO();
-        ArrayList<Transaction.Output> utxoOutputs = new ArrayList<Transaction.Output>();
-
-        for(int i = 0; i < utxos.size(); ++i) {
-            utxoOutputs.add(m_utxoPool.getTxOutput(utxos.get(i)));
-        }
-
         double inValue = 0.0, outValue = 0.0;
 
         for(int i = 0; i < inputs.size(); ++i) {
-            // (2) the signatures on each input of {@code tx} are valid
-            if(!Crypto.verifySignature(outputs.get(inputs.get(i).outputIndex).address, tx.getRawDataToSign(i), inputs.get(i).signature)) {
+            UTXO utxo = new UTXO(inputs.get(i).prevTxHash, inputs.get(i).outputIndex);
+   
+            // (1) all outputs claimed by {@code tx} are in the current UTXO pool 
+            if(!m_utxoPool.contains(utxo)) {
                 return false;
             }
 
-            inValue += outputs.get(inputs.get(i).outputIndex).value;
+            // (3) no UTXO is claimed multiple times by {@code tx}
+//            if(m_toRemoved.contains(utxo)) {
+//                return false;
+//            }
+
+//            m_toRemoved.add(utxo);
+
+            Transaction.Output preOutput = m_utxoPool.getTxOutput(utxo);
+
+            // (2) the signatures on each input of {@code tx} are valid
+            if(!Crypto.verifySignature(preOutput.address, tx.getRawDataToSign(i), inputs.get(i).signature)) {
+                return false;
+            }
+
+            inValue += preOutput.value;
         }
 
-        boolean bInUTXOPool = false;
-
         for(int i = 0; i < outputs.size(); ++i) {
-            // (1) all outputs claimed by {@code tx} are in the current UTXO pool
-            for(int j = 0; j < utxoOutputs.size(); ++j) {
-                if(outputs.get(i) == utxoOutputs.get(j)) {
-                    // (3) no UTXO is claimed multiple times by {@code tx}
-                    if(!m_utxoPool.contains(utxos.get(j))) {
-                        return false;
-                    }
-
-                    m_utxoPool.removeUTXO(utxos.get(j));
-                    bInUTXOPool = true;
-                }
-            }
-
-            if(!bInUTXOPool) {
-                return false;
-            }
-
             // (4) all of {@code tx}s output values are non-negative
             if(outputs.get(i).value < 0.0) {
                 return false;
@@ -82,15 +73,23 @@ public class TxHandler {
      * updating the current UTXO pool as appropriate.
      */
     public Transaction[] handleTxs(Transaction[] possibleTxs) {
-        ArrayList<Transaction> res = new ArrayList<Transaction>();
+        ArrayList<Transaction> valid = new ArrayList<Transaction>();
+        m_toRemoved = new HashSet<UTXO>();
 
         for(Transaction tx : possibleTxs) {
             if(isValidTx(tx)) {
-                res.add(tx);
+                valid.add(tx);
             }
         }
 
-        return (Transaction[])res.toArray();
+        Iterator value = m_toRemoved.iterator(); 
+
+        while(value.hasNext()) {
+            m_utxoPool.removeUTXO((UTXO)(value.next()));
+        }
+
+        Transaction[] res = valid.toArray(new Transaction[valid.size()]);
+        return res;
     }
 
 }
