@@ -3,7 +3,7 @@ import java.util.*;
 public class TxHandler {
 
     private UTXOPool m_utxoPool;
-    private HashSet<UTXO> m_toRemoved;
+    private HashSet<UTXO> m_curRemoved, m_totalRemoved;
 
     /**
      * Creates a public ledger whose current UTXOPool (collection of unspent transaction outputs) is
@@ -12,6 +12,8 @@ public class TxHandler {
      */
     public TxHandler(UTXOPool utxoPool) {
         m_utxoPool = new UTXOPool(utxoPool);
+        m_totalRemoved = new HashSet<UTXO>();
+        m_curRemoved = new HashSet<UTXO>();
     }
 
     /**
@@ -37,12 +39,11 @@ public class TxHandler {
             }
 
             // (3) no UTXO is claimed multiple times by {@code tx}
-//            if(m_toRemoved.contains(utxo)) {
+            if(m_curRemoved.contains(utxo) || m_totalRemoved.contains(utxo)) {
 //                return false;
-//            }
+            }
 
-//            m_toRemoved.add(utxo);
-
+            m_curRemoved.add(utxo);
             Transaction.Output preOutput = m_utxoPool.getTxOutput(utxo);
 
             // (2) the signatures on each input of {@code tx} are valid
@@ -74,19 +75,31 @@ public class TxHandler {
      */
     public Transaction[] handleTxs(Transaction[] possibleTxs) {
         ArrayList<Transaction> valid = new ArrayList<Transaction>();
-        m_toRemoved = new HashSet<UTXO>();
+        m_totalRemoved.clear();
 
         for(Transaction tx : possibleTxs) {
+            m_curRemoved.clear();
+
             if(isValidTx(tx)) {
                 valid.add(tx);
+                Iterator value = m_curRemoved.iterator();
+
+                while(value.hasNext()) {
+                    m_totalRemoved.add((UTXO)(value.next()));
+                }
+
+                for(int i = 0; i < tx.getOutputs().size(); ++i) {
+                    UTXO utxo = new UTXO(tx.getRawTx(), i);
+//                    m_utxoPool.addUTXO(utxo, tx.getOutput(i));
+                }
             }
         }
 
-        Iterator value = m_toRemoved.iterator(); 
+//        Iterator value = m_totalRemoved.iterator(); 
 
-        while(value.hasNext()) {
-            m_utxoPool.removeUTXO((UTXO)(value.next()));
-        }
+//        while(value.hasNext()) {
+//            m_utxoPool.removeUTXO((UTXO)(value.next()));
+//        }
 
         Transaction[] res = valid.toArray(new Transaction[valid.size()]);
         return res;
