@@ -34,8 +34,6 @@ public class CompliantNode implements Node {
 
     // (3) For each round, it will be called to update the latest transaction status
     public void receiveFromFollowees(Set<Candidate> candidates) {
-        m_agree.clear();
-
         for(Candidate c : candidates) {
             m_agree.add(c.tx);
         }
