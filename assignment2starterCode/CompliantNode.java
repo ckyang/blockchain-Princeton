@@ -1,41 +1,54 @@
-import java.util.*;
+import java.util.HashSet;
+import java.util.Set;
+
+import static java.util.stream.Collectors.toSet;
 
 /* CompliantNode refers to a node that follows the rules (not malicious)*/
 public class CompliantNode implements Node {
 
-    private double m_graph, m_malicious, m_txDistribution;
-    private int m_numRounds;
-    private boolean[] m_followees;
+    private double p_graph;
+    private double p_malicious;
+    private double p_tXDistribution;
+    private int numRounds;
+    private boolean[] followees;
+    private Set<Transaction> pendingTransactions;
+    private boolean[] blackListed;
 
-    private Set<Transaction> m_agree;
-
-    // Setup the user input
     public CompliantNode(double p_graph, double p_malicious, double p_txDistribution, int numRounds) {
-        m_graph = p_graph;
-        m_malicious = p_malicious;
-        m_txDistribution = p_txDistribution;
-        m_numRounds = numRounds;
+        this.p_graph = p_graph;
+        this.p_malicious = p_malicious;
+        this.p_tXDistribution = p_txDistribution;
+        this.numRounds = numRounds;
     }
 
-    // Setup the followee -> follower graph
     public void setFollowees(boolean[] followees) {
-        m_followees = followees;
+        this.followees = followees;
+        this.blackListed = new boolean[followees.length];
     }
 
-    // (1) Initial transaction status
     public void setPendingTransaction(Set<Transaction> pendingTransactions) {
-        m_agree = pendingTransactions;
+        this.pendingTransactions = pendingTransactions;
     }
 
-    // (2) For each round, it will be called to get the agreed transactions
     public Set<Transaction> sendToFollowers() {
-        return m_agree;
+        Set<Transaction> toSend = new HashSet<>(pendingTransactions);
+        pendingTransactions.clear();
+        return toSend;
     }
 
-    // (3) For each round, it will be called to update the latest transaction status
     public void receiveFromFollowees(Set<Candidate> candidates) {
+        Set<Integer> senders = candidates.stream().map(c -> c.sender).collect(toSet());
+
+        for(int i = 0; i < followees.length; ++i) {
+            if(followees[i] && !senders.contains(i)) {
+                blackListed[i] = true;
+            }
+        }
+
         for(Candidate c : candidates) {
-            m_agree.add(c.tx);
+            if (!blackListed[c.sender]) {
+                pendingTransactions.add(c.tx);
+            }
         }
     }
 }
